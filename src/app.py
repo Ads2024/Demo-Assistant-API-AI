@@ -63,14 +63,15 @@ vector_store_id = os.getenv("VECTOR_STORE_ID")
 
 # Sidebar content
 def render_sidebar():
-    st.sidebar.image("assets\Snack-Brands.png", use_column_width=True)
+    # Logo at the top
+    st.sidebar.image("assets/Snack-Brands.png", use_column_width=True)
     
     # Title and description
-    st.sidebar.title("Welcome to SBA Performance Hub")
-    st.sidebar.write("Your AI assistant for analyzing operational KPIs and plant performance metrics.")
+    st.sidebar.markdown("<h1 style='color: #2E86C1;'>Welcome to SBA Performance Hub</h1>", unsafe_allow_html=True)
+    st.sidebar.markdown("<p style='font-size: 14px;'>Your AI assistant for analyzing operational KPIs and plant performance metrics.</p>", unsafe_allow_html=True)
     
     # Key Features section
-    st.sidebar.subheader("Key Features")
+    st.sidebar.markdown("<h2 style='color: #2E86C1;'>Key Features</h2>", unsafe_allow_html=True)
     features = [
         "Analyze operational KPIs",
         "Track plant performance",
@@ -79,21 +80,29 @@ def render_sidebar():
         "Simulate performance scenarios"
     ]
     for feature in features:
-        st.sidebar.markdown(f"• {feature}")
-        
+        st.sidebar.markdown(f"<li style='margin-bottom: 5px;'>{feature}</li>", unsafe_allow_html=True)
+    
     # How to Use section
-    st.sidebar.subheader("How to Use")
+    st.sidebar.markdown("<h2 style='color: #2E86C1;'>How to Use</h2>", unsafe_allow_html=True)
     usage_steps = [
         "Ask questions about KPIs and metrics",
         "Request specific calculations",
         "Compare performance periods",
         "Get insights and recommendations"
     ]
-    for idx, step in enumerate(usage_steps, 1):
-        st.sidebar.markdown(f"{idx}. {step}")
+    st.sidebar.markdown("<ol style='padding-left: 20px;'>", unsafe_allow_html=True)
+    for step in usage_steps:
+        st.sidebar.markdown(f"<li style='margin-bottom: 5px;'>{step}</li>", unsafe_allow_html=True)
+    st.sidebar.markdown("</ol>", unsafe_allow_html=True)
     
-    # Add some spacing
-    st.sidebar.markdown("---")
+    # Add a separator for better organization
+    st.sidebar.markdown("<hr style='border: 1px solid #ddd;'>", unsafe_allow_html=True)
+    
+    # Footer or additional links
+    st.sidebar.markdown(
+        "<p style='font-size: 12px; color: grey;'>Need help? Visit our <a href='https://snackbrands-ops.atlassian.net/servicedesk/customer/portal/1' target='_blank'>Help Center</a>.</p>",
+        unsafe_allow_html=True
+    )
 
 def main():
     # Render sidebar
