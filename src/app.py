@@ -61,7 +61,43 @@ load_dotenv()
 assistant_id = os.getenv("ASSISTANT_ID")
 vector_store_id = os.getenv("VECTOR_STORE_ID")
 
+# Sidebar content
+def render_sidebar():
+    st.sidebar.image("assets\Snack-Brands.png", use_column_width=True)
+    
+    # Title and description
+    st.sidebar.title("Welcome to SBA Performance Hub")
+    st.sidebar.write("Your AI assistant for analyzing operational KPIs and plant performance metrics.")
+    
+    # Key Features section
+    st.sidebar.subheader("Key Features")
+    features = [
+        "Analyze operational KPIs",
+        "Track plant performance",
+        "Calculate efficiency metrics",
+        "Generate insights from production data",
+        "Simulate performance scenarios"
+    ]
+    for feature in features:
+        st.sidebar.markdown(f"• {feature}")
+        
+    # How to Use section
+    st.sidebar.subheader("How to Use")
+    usage_steps = [
+        "Ask questions about KPIs and metrics",
+        "Request specific calculations",
+        "Compare performance periods",
+        "Get insights and recommendations"
+    ]
+    for idx, step in enumerate(usage_steps, 1):
+        st.sidebar.markdown(f"{idx}. {step}")
+    
+    # Add some spacing
+    st.sidebar.markdown("---")
+
 def main():
+    # Render sidebar
+    render_sidebar()
     # Apply styling
     st.markdown(get_page_styling(), unsafe_allow_html=True)
     
