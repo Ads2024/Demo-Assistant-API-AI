@@ -5,6 +5,8 @@ import yaml
 import random
 import os
 import base64
+from datetime import datetime
+import time
 from dotenv import load_dotenv
 from openai import OpenAI
 from service.ai_service import AIAssistantManager
@@ -22,6 +24,25 @@ WELCOME_MESSAGES = [
     "Welcome aboard! With Snack Brands Australia's Performance Insights platform, access the latest metrics on production, packaging, and efficiency. Let's work together to transform data into powerful decisions and remarkable outcomes in your operations. Let's embark on this journey!"
 ]
 
+def show_welcome_animation():
+    """Display welcome animation on first load"""
+    with st.spinner("Loading SBA Performance Hub..."):
+        time.sleep(1)
+    st.balloons()
+
+def display_welcome_banner():
+    """Display time-based welcome banner"""
+    current_hour = datetime.now().hour
+    greeting = "Good Morning" if current_hour < 12 else "Good Afternoon" if current_hour < 17 else "Good Evening"
+        
+    st.markdown(f"""
+        <div style='padding: 1.5rem; border-radius: 10px; background-color: rgba(46, 134, 193, 0.1); 
+                    border: 1px solid rgba(46, 134, 193, 0.2); margin-bottom: 1rem;'>
+            <h2 style='color: #2E86C1; margin: 0;'>{greeting}! 👋</h2>
+            <p style='margin: 0.5rem 0 0 0;'>Welcome to SBA Performance Hub. How can I assist you today?</p>
+        </div>
+    """, unsafe_allow_html=True)
+
 st.set_page_config(
     page_title="Snack Brands Assistant",
     page_icon="✨",
@@ -32,18 +53,19 @@ st.set_page_config(
 # Apply styling immediately after page config
 st.markdown(get_page_styling(), unsafe_allow_html=True)
 
-# Initialize particles.js with proper height
+# Initialize session states
 if "show_animation" not in st.session_state:
     st.session_state.show_animation = True
-
-if st.session_state.show_animation:
-    components.html(get_particles_js(), height=800, scrolling=False)
-
-# Initialize conversation history with welcome message
+if "welcome_shown" not in st.session_state:
+    st.session_state.welcome_shown = False
 if "conversation_history" not in st.session_state:
     welcome_message = random.choice(WELCOME_MESSAGES)
     st.session_state.conversation_history = [{"role": "assistant", "content": welcome_message}]
+if "thread_id" not in st.session_state:
+    st.session_state.thread_id = None
 
+if st.session_state.show_animation:
+    components.html(get_particles_js(), height=800, scrolling=False)
 
 def load_data(file_path, key):
     with open(file_path, "r") as file:
@@ -61,10 +83,96 @@ load_dotenv()
 assistant_id = os.getenv("ASSISTANT_ID")
 vector_store_id = os.getenv("VECTOR_STORE_ID")
 
-# Sidebar content
+def process_query(query, output_area):
+    """Process a user query and generate response"""
+    thread_id = get_thread_id()
+    if not thread_id:
+        st.error("Failed to create thread.")
+        return
+
+    client = AIAssistantManager.init_client()
+    
+    # Add message to thread
+    client.beta.threads.messages.create(
+        thread_id=thread_id,
+        role="user",
+        content=query
+    )
+    
+    # Stream response
+    event_handler = StreamlitEventHandler(output_area)
+    try:
+        with client.beta.threads.runs.stream(
+            thread_id=thread_id,
+            assistant_id=assistant_id,
+            instructions="",
+            event_handler=event_handler
+        ) as stream:
+            current_response = ""
+            for delta in stream:
+                if hasattr(delta, 'data') and hasattr(delta.data, 'delta'):
+                    if hasattr(delta.data.delta, 'content'):
+                        for block in delta.data.delta.content:
+                            if hasattr(block, 'text') and hasattr(block.text, 'value'):
+                                text_chunk = block.text.value
+                                current_response += text_chunk
+                                output_area.markdown(current_response)
+            
+            # Add complete response to conversation history
+            if current_response:
+                st.session_state.conversation_history.append({
+                    "role": "assistant",
+                    "content": current_response
+                })
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
+
+def get_thread_id():
+    """Get or create thread ID"""
+    if st.session_state.thread_id is None:
+        st.session_state.thread_id = AIAssistantManager.create_thread()
+    return st.session_state.thread_id
+
 def render_sidebar():
-    # Logo at the top
+    """Render sidebar with enhanced features"""
     st.sidebar.image("assets/Snack-Brands.png", use_column_width=True)
+    
+    # Add refresh button at the top
+    if st.sidebar.button("🔄 New Conversation", key="refresh_button",
+                        help="Start a new conversation"):
+        st.session_state.conversation_history = []
+        st.session_state.thread_id = None
+        st.session_state.welcome_shown = False
+        st.rerun()
+    
+    # Display session info if available
+    if st.session_state.thread_id:
+        st.sidebar.markdown(
+            f"""<div style='padding: 10px; background-color: rgba(255,255,255,0.1); 
+                border-radius: 5px; margin: 10px 0;'>
+                <small>Session ID: {st.session_state.thread_id[:8]}...</small>
+            </div>""",
+            unsafe_allow_html=True
+        )
+    
+    # Quick Actions section
+    st.sidebar.markdown("<h2 style='color: #2E86C1;'>Quick Actions</h2>", unsafe_allow_html=True)
+    quick_actions = {
+        "📊 View Overall KPIs": "Show me the overall KPIs for the current month",
+        "🏭 Plant Performance": "Analyze plant performance metrics",
+        "⏱️ Efficiency Analysis": "Calculate current efficiency metrics",
+        "📈 Production Trends": "Show production trends over the last 3 months",
+        "🎯 Target vs Actual": "Compare target vs actual performance"
+    } # TODO: Use as presets for user queries
+    
+    selected_action = st.sidebar.selectbox(
+        "Choose a quick action",
+        list(quick_actions.keys()),
+        key="quick_actions"
+    )
+    
+    if st.sidebar.button("Execute Action"):
+        return quick_actions[selected_action]
     
     # Title and description
     st.sidebar.markdown("<h1 style='color: #2E86C1;'>Welcome to SBA Performance Hub</h1>", unsafe_allow_html=True)
@@ -95,18 +203,25 @@ def render_sidebar():
         st.sidebar.markdown(f"<li style='margin-bottom: 5px;'>{step}</li>", unsafe_allow_html=True)
     st.sidebar.markdown("</ol>", unsafe_allow_html=True)
     
-    # Add a separator for better organization
     st.sidebar.markdown("<hr style='border: 1px solid #ddd;'>", unsafe_allow_html=True)
     
-    # Footer or additional links
     st.sidebar.markdown(
-        "<p style='font-size: 12px; color: grey;'>Need help? Visit our <a href='https://snackbrands-ops.atlassian.net/servicedesk/customer/portal/1' target='_blank'>Help Center</a>.</p>",
+        """<p style='font-size: 12px; color: grey;'>Need help? Visit our 
+        <a href='https://snackbrands-ops.atlassian.net/servicedesk/customer/portal/1' target='_blank'>Help Center</a>.</p>""",
         unsafe_allow_html=True
     )
+    
+    return None
 
 def main():
-    # Render sidebar
-    render_sidebar()
+    # Show welcome animation only once per session
+    if not st.session_state.welcome_shown:
+        show_welcome_animation()
+        st.session_state.welcome_shown = True
+    
+    # Render sidebar and get any quick action query
+    quick_action_query = render_sidebar()
+    
     # Apply styling
     st.markdown(get_page_styling(), unsafe_allow_html=True)
     
@@ -114,19 +229,9 @@ def main():
     if st.session_state.show_animation:
         components.html(get_particles_js(), height=0)
 
-    # Maintain thread and conversation context
-    if "thread_id" not in st.session_state:
-        st.session_state.thread_id = None
-    if "conversation_history" not in st.session_state:
-        st.session_state.conversation_history = []
-
-    # get thread id
-
-    def get_thread_id():
-        if st.session_state.thread_id is None:
-            st.session_state.thread_id = AIAssistantManager.create_thread()
-        return st.session_state.thread_id
-
+    # Display welcome banner
+    display_welcome_banner()
+    
     # Display conversation history with enhanced styling
     for message in st.session_state.conversation_history:
         with st.chat_message(
@@ -135,64 +240,33 @@ def main():
         ):
             st.write(message["content"])
 
+    # Process quick action if selected
+    if quick_action_query:
+        with st.chat_message("user", avatar=AVATAR_URLS["user"]):
+            st.write(quick_action_query)
+        
+        st.session_state.conversation_history.append({
+            "role": "user",
+            "content": quick_action_query
+        })
+        
+        with st.chat_message("assistant", avatar=AVATAR_URLS["assistant"]):
+            output_area = st.empty()
+            process_query(quick_action_query, output_area)
+
     # User input
     if user_query := st.chat_input("Enter your query..."):
         with st.chat_message("user", avatar=AVATAR_URLS["user"]):
             st.write(user_query)
             
-        # Add to conversation history
         st.session_state.conversation_history.append({
             "role": "user",
             "content": user_query
         })
 
-        # Assistant response with streaming
         with st.chat_message("assistant", avatar=AVATAR_URLS["assistant"]):
             output_area = st.empty()
-
-            
-            # Create thread and process response
-            thread_id = get_thread_id()
-            if not thread_id:
-                st.error("Failed to create thread.")
-                return
-                
-            client = AIAssistantManager.init_client()
-            
-            # Add message to thread
-            client.beta.threads.messages.create(
-                thread_id=thread_id,
-                role="user",
-                content=user_query
-            )
-            
-            # Stream response
-            event_handler = StreamlitEventHandler(output_area)
-            try:
-                with client.beta.threads.runs.stream(
-                    thread_id=thread_id,
-                    assistant_id=assistant_id,
-                    instructions="",
-                    event_handler=event_handler
-                ) as stream:
-                    current_response = ""
-                    for delta in stream:
-                        if hasattr(delta, 'data') and hasattr(delta.data, 'delta'):
-                            if hasattr(delta.data.delta, 'content'):
-                                for block in delta.data.delta.content:
-                                    if hasattr(block, 'text') and hasattr(block.text, 'value'):
-                                        text_chunk = block.text.value
-                                        current_response += text_chunk
-                                        output_area.markdown(current_response)
-                    
-                    # Add complete response to conversation history
-                    if current_response:
-                        st.session_state.conversation_history.append({
-                            "role": "assistant",
-                            "content": current_response
-                        })
-            except Exception as e:
-                st.error(f"An error occurred: {e}")
+            process_query(user_query, output_area)
 
 if __name__ == "__main__":
     main()

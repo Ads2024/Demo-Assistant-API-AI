@@ -114,6 +114,11 @@ streamlit run src/app.py
 
 3. Begin querying manufacturing data through the chat interface
 
+<div align="center">
+  <img src="assets\Interface_Demo.png" alt="KMRD Logo" width="400" />
+  <br /><br />
+</div>
+
 ## Data Schema 📊
 
 The application uses a comprehensive data model covering:
