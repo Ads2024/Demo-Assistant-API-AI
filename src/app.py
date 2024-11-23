@@ -114,6 +114,19 @@ def main():
     if st.session_state.show_animation:
         components.html(get_particles_js(), height=0)
 
+    # Maintain thread and conversation context
+    if "thread_id" not in st.session_state:
+        st.session_state.thread_id = None
+    if "conversation_history" not in st.session_state:
+        st.session_state.conversation_history = []
+
+    # get thread id
+
+    def get_thread_id():
+        if st.session_state.thread_id is None:
+            st.session_state.thread_id = AIAssistantManager.create_thread()
+        return st.session_state.thread_id
+
     # Display conversation history with enhanced styling
     for message in st.session_state.conversation_history:
         with st.chat_message(
@@ -136,9 +149,10 @@ def main():
         # Assistant response with streaming
         with st.chat_message("assistant", avatar=AVATAR_URLS["assistant"]):
             output_area = st.empty()
+
             
             # Create thread and process response
-            thread_id = AIAssistantManager.create_thread()
+            thread_id = get_thread_id()
             if not thread_id:
                 st.error("Failed to create thread.")
                 return
