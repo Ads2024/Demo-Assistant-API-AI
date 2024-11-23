@@ -1,185 +1,319 @@
 # SBA Performance Hub - Architecture Documentation
 
 ## System Overview
+The SBA Performance Hub is a containerized manufacturing analytics platform leveraging microservices architecture, deployed on Azure Cloud using container services and app services.
 
-The SBA Performance Hub is a manufacturing analytics platform built on a microservices architecture, integrating OpenAI's Assistants API with Streamlit for real-time data analysis.
-
-## Architecture Diagram
+## Deployment Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Frontend
-        UI[Streamlit UI]
-        PS[Particle.js System]
+    subgraph Development
+        LC[Local Container]
+        DR[Docker Registry]
     end
 
-    subgraph AILayer
-        AS[AI Service]
-        VDB[(Vector Store)]
-        OAI[OpenAI Assistant]
+    subgraph Azure Cloud
+        subgraph ACR[Azure Container Registry]
+            IR[Image Repository]
+        end
+        
+        subgraph AAS[Azure App Service]
+            subgraph ASP[App Service Plan]
+                WA[Web App]
+            end
+        end
+        
+        subgraph Resources
+            KV[Key Vault]
+            AI[Application Insights]
+            LOG[Log Analytics]
+        end
     end
 
-    subgraph DataLayer
-        DIM[(Dimensional Tables)]
-        FACT[(Fact Tables)]
+    LC -- Push --> DR
+    DR -- Sync --> IR
+    IR -- Deploy --> WA
+    KV -- Secrets --> WA
+    WA -- Metrics --> AI
+    AI -- Analytics --> LOG
+```
+
+## Container Architecture
+
+```mermaid
+flowchart LR
+    subgraph Container
+        subgraph App Components
+            ST[Streamlit App]
+            AI[AI Service]
+            VS[Vector Store]
+        end
+        
+        subgraph Container Services
+            NX[NGINX]
+            GU[Gunicorn]
+        end
     end
 
-    UI --> AS
-    PS --> UI
-    AS --> OAI
-    OAI --> VDB
-    VDB --> DIM
-    VDB --> FACT
+    subgraph External Services
+        OAI[OpenAI API]
+        AKV[Azure Key Vault]
+    end
+
+    NX --> GU
+    GU --> ST
+    ST --> AI
+    AI --> VS
+    AI --> OAI
+    Container --> AKV
 ```
 
 ## Component Details
 
-### 1. Frontend Layer
-- **Streamlit Interface (`app.py`)**
-  - Manages user interactions
-  - Renders chat interface
-  - Handles real-time updates
-  - Implements responsive design
-  - Uses glassmorphism styling
+### 1. Containerization Layer
+- **Docker Configuration**
+  ```yaml
+  Components:
+    - Base Image: python:3.11.5-slim
+    - Exposed Port: 8501
+    - Environment: Production
+    - Health Checks: Enabled
+    - Volume Mounts: Configured
+  ```
 
-- **Particle.js System (`layout.yaml`)**
-  - Provides interactive background
-  - Handles animation effects
-  - Manages particle interactions
+- **Container Registry**
+  ```yaml
+  Azure Container Registry:
+    - Name: sbaregistry
+    - SKU: Standard
+    - Replication: Enabled
+    - Security: Azure AD Integration
+  ```
 
-### 2. AI Layer
-- **AI Service (`ai_service.py`)**
-  - Manages OpenAI Assistant interactions
-  - Handles thread management
-  - Processes conversations
-  - Manages file uploads
+### 2. Azure App Service Configuration
+- **App Service Plan**
+  ```yaml
+  Plan:
+    - Tier: Premium V2
+    - Size: P1v2
+    - OS: Linux
+    - Scaling: Auto-scale enabled
+  ```
 
-- **Vector Store**
-  - Stores preprocessed manufacturing data
-  - Enables semantic search
-  - Indexes documentation
-  - Supports real-time queries
+- **Web App Settings**
+  ```yaml
+  Configuration:
+    - Runtime: Python 3.11
+    - Startup Command: Custom
+    - HTTPS Only: Enabled
+    - Authentication: Azure AD
+  ```
 
-### 3. Data Layer
-#### Dimensional Tables
-- `DimDate`: Calendar reference
-- `DimJobStatus`: Work order statuses
-- `DimLine`: Production line details
-- `DimLineType`: Line classifications
-- `DimSite`: Facility information
+### 3. Application Components
+- **Frontend Layer**
+  - Streamlit interface (app.py)
+  - Particle.js system (layout.yaml)
+  - Responsive UI components
 
-#### Fact Tables
-- `Production`: Daily production metrics
-- `FactMESLinePerformance`: Line efficiency data
-- `FactMESProductionStop`: Downtime tracking
-- `FactUnitCount`: Production counts
+- **AI Service Layer**
+  - OpenAI integration
+  - Thread management
+  - Response streaming
 
-## Data Flow
+- **Data Layer**
+  - Vector store integration
+  - Metrics processing
+  - Analytics engine
 
-1. **User Input Flow**
+## Deployment Flow
+
+1. **Local Development**
+   ```bash
+   # Build Docker image
+   docker build -t sba-performance-hub .
+   
+   # Test locally
+   docker-compose up
    ```
-   User Query → Streamlit UI → AI Service → OpenAI Assistant → Vector Store → Response
+
+2. **Container Registry Push**
+   ```bash
+   # Tag image
+   docker tag sba-performance-hub sbaregistry.azurecr.io/sba-performance-hub:latest
+   
+   # Push to ACR
+   docker push sbaregistry.azurecr.io/sba-performance-hub:latest
    ```
 
-2. **Analytics Flow**
-   ```
-   Data Layer → Vector Store → AI Service → Metrics Calculation → UI Visualization
+3. **Azure Deployment**
+   ```yaml
+   Deployment:
+     - Source: Azure Container Registry
+     - Type: Continuous deployment
+     - Branch: main
+     - Environment: Production
    ```
 
 ## Security Architecture
 
-- Environment variable management
-- API key security
-- Data access controls
-- Session management
+### 1. Container Security
+```yaml
+Security:
+  Container:
+    - Non-root user
+    - Read-only filesystem
+    - Resource limits
+    - Security scanning
+```
 
-## Integration Points
+### 2. Azure Security
+```yaml
+Azure Security:
+  - Managed Identity
+  - Key Vault integration
+  - Network security groups
+  - Azure AD authentication
+```
 
-1. **OpenAI Integration**
-   - Assistant API connection
-   - Thread management
-   - Response streaming
+### 3. Application Security
+```yaml
+App Security:
+  - Environment variables
+  - Secret management
+  - Access controls
+  - Session management
+```
 
-2. **Vector Store Integration**
-   - File batch processing
-   - Query optimization
-   - Data indexing
+## Monitoring & Logging
 
-## Performance Considerations
+### 1. Container Monitoring
+```mermaid
+flowchart LR
+    subgraph Container Monitoring
+        HE[Health Endpoints]
+        LG[Container Logs]
+        MT[Metrics]
+    end
+    
+    subgraph Azure Monitoring
+        AI[Application Insights]
+        LA[Log Analytics]
+        AM[Azure Monitor]
+    end
+    
+    HE --> AI
+    LG --> LA
+    MT --> AM
+```
 
-1. **Response Time Optimization**
-   - Streamed responses
-   - Cached calculations
-   - Optimized queries
+### 2. Azure Monitoring
+- Application Insights integration
+- Log Analytics workspace
+- Azure Monitor metrics
+- Custom dashboards
 
-2. **Resource Management**
-   - Memory efficient processing
-   - Connection pooling
-   - Thread lifecycle management
+## Scaling Strategy
 
-## Metrics Processing
+### 1. Container Scaling
+```yaml
+Scaling:
+  Horizontal:
+    - Min instances: 2
+    - Max instances: 10
+    - Scale rules: CPU/Memory based
+```
+
+### 2. Azure Scaling
+```yaml
+App Service:
+  Autoscaling:
+    - Scale out conditions
+    - Scale in conditions
+    - Schedule-based scaling
+```
+
+## Performance Optimization
+
+### 1. Container Optimization
+- Multi-stage builds
+- Layer caching
+- Resource allocation
+- Performance tuning
+
+### 2. Application Optimization
+- Response caching
+- Connection pooling
+- Memory management
+- Query optimization
+
+## Disaster Recovery
+
+### 1. Backup Strategy
+```yaml
+Backups:
+  - Container images
+  - Configuration
+  - Application data
+  - Secrets
+```
+
+### 2. Recovery Plan
+```yaml
+Recovery:
+  - Rollback procedures
+  - Data recovery
+  - Service restoration
+  - Failover strategy
+```
+
+## Cost Management
+
+### 1. Resource Optimization
+```yaml
+Optimization:
+  - Right-sizing
+  - Reserved instances
+  - Auto-shutdown
+  - Cost monitoring
+```
+
+### 2. Monitoring
+```yaml
+Cost Monitoring:
+  - Budget alerts
+  - Usage tracking
+  - Optimization recommendations
+  - Cost analysis
+```
+
+## Development Workflow
 
 ```mermaid
 flowchart LR
-    Raw[Raw Data] --> Calc[Calculations Engine]
-    Calc --> KPI[KPI Generation]
-    KPI --> Vis[Visualization]
-
-    subgraph Metrics
-        OEE[OEE Analysis]
-        TEEP[TEEP Calculation]
-        Prod[Production Metrics]
-    end
-
-    Calc --> Metrics
+    DEV[Development] --> BUILD[Build]
+    BUILD --> TEST[Test]
+    TEST --> ACR[Push to ACR]
+    ACR --> DEPLOY[Deploy to Azure]
+    DEPLOY --> MONITOR[Monitor]
 ```
 
-## Error Handling
+## Maintenance Procedures
 
-1. **Graceful Degradation**
-   - Service fallbacks
-   - Error recovery
-   - User feedback
-
-2. **Monitoring**
-   - Error logging
-   - Performance tracking
-   - Usage analytics
-
-## Future Considerations
-
-1. **Scalability**
-   - Horizontal scaling
-   - Load balancing
-   - Cache optimization
-
-2. **Feature Expansion**
-   - Additional metrics
-   - Enhanced visualizations
-   - Advanced analytics
-
-## Configuration Management
-
+### 1. Updates
 ```yaml
-Components:
-  Frontend:
-    - Streamlit configs
-    - UI layouts
-    - Style definitions
-  Backend:
-    - Environment variables
-    - API configurations
-    - Service settings
+Maintenance:
+  - Image updates
+  - Security patches
+  - Dependency updates
+  - Configuration updates
 ```
 
-## Deployment Architecture
+### 2. Monitoring
+```yaml
+Monitoring:
+  - Performance metrics
+  - Error tracking
+  - Usage analytics
+  - Cost analysis
+```
 
-1. **Development Environment**
-   - Local setup
-   - Testing environment
-   - Debug configurations
-
-2. **Production Environment**
-   - Deployment configs
-   - Security settings
-   - Performance optimizations
