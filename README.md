@@ -115,8 +115,9 @@ streamlit run src/app.py
 3. Begin querying manufacturing data through the chat interface
 
 <div align="center">
-  <img src="assets\Interface_Demo.png" alt="KMRD Logo" width="400" />
-  <br /><br />
+  <img src="assets/Interface_Demo.png" alt="Interface Demo" width="800" />
+  <br />
+  <i>SBA Performance Hub Interface</i>
 </div>
 
 ## Data Schema 📊
