@@ -1,3 +1,5 @@
+import base64
+import os
 def get_page_styling():
     return """
     <style>
@@ -179,8 +181,18 @@ def get_particles_js():
 </body>
 </html>
 """
+# read gif file
+def read_gif(file_name):
+    with open(os.path.join(os.getcwd(),file_name),'rb') as f:
+        contents=f.read()
+        data_url=base64.b64encode(contents).decode('utf-8')
+    return data_url
+
+# create variables for gif files
+ASSISTANT_GIF = read_gif('assets/assistant.gif')
+USER_GIF = read_gif('assets/user.gif')
 
 AVATAR_URLS = {
-    "assistant": "assets/assistant.gif",
-    "user": "assets/user.gif"
+    "assistant": f"data:image/gif;base64,{ASSISTANT_GIF}",
+    "user": f"data:image/gif;base64,{USER_GIF}",
 }
