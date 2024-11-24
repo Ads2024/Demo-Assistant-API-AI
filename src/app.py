@@ -7,6 +7,8 @@ import os
 import base64
 from datetime import datetime
 import time
+import tempfile
+from PIL import Image
 from dotenv import load_dotenv
 from openai import OpenAI
 from service.ai_service import AIAssistantManager
@@ -111,21 +113,57 @@ def process_query(query, output_area):
             current_response = ""
             for delta in stream:
                 if hasattr(delta, 'data') and hasattr(delta.data, 'delta'):
-                    if hasattr(delta.data.delta, 'content'):
-                        for block in delta.data.delta.content:
-                            if hasattr(block, 'text') and hasattr(block.text, 'value'):
-                                text_chunk = block.text.value
-                                current_response += text_chunk
-                                output_area.markdown(current_response)
+                    # Process content blocks
+                    content_blocks = getattr(delta.data.delta, 'content', [])
+                    if not content_blocks:
+                        continue  # Skip if no content blocks
+                    
+                    for block in content_blocks:
+                        # Handle text content
+                        if hasattr(block, 'text') and hasattr(block.text, 'value'):
+                            text_chunk = block.text.value
+                            current_response += text_chunk
+                            output_area.markdown(current_response)
+                        
+                        # Handle image content
+                        elif hasattr(block, 'image_file') and block.image_file:
+                            try:
+                                image_file = block.image_file.file_id
+                                if not image_file:
+                                    st.error("Image file ID is missing.")
+                                    continue
+                                
+                                # Fetch and process image
+                                image_data = client.files.content(image_file).read()
+                                temp_file = tempfile.NamedTemporaryFile(delete=False)
+                                temp_file.write(image_data)
+                                temp_file.close()
+                                
+                                # Open and display image
+                                image = Image.open(temp_file.name)
+                                st.image(image, use_column_width=True)
+                            except Exception as e:
+                                st.error(f"Error processing image: {e}")
+                            finally:
+                                # Clean up temporary file
+                                if temp_file:
+                                    os.unlink(temp_file.name)
+                        
+                        # Handle unknown content types
+                        else:
+                            st.warning(f"Unexpected content type: {block.type}")
             
             # Add complete response to conversation history
-            if current_response:
+            if current_response.strip():
                 st.session_state.conversation_history.append({
                     "role": "assistant",
-                    "content": current_response
+                    "content": current_response.strip()
                 })
     except Exception as e:
         st.error(f"An error occurred: {e}")
+
+     
+
 
 def get_thread_id():
     """Get or create thread ID"""
