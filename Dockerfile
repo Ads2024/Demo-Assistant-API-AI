@@ -20,14 +20,31 @@ RUN apt-get update && apt-get install -y \
 # Upgrade pip and install build tools
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Copy requirements first for better caching
+# Install dependencies in stages
 COPY requirements.txt .
 
-# Install dependencies using quotes to handle special characters
-RUN pip install --no-cache-dir "typing-extensions>=4.11.0" && \
-    pip install --no-cache-dir "PyYAML==6.0.2" && \
-    pip install --no-cache-dir -r requirements.txt && \
-    rm -rf /root/.cache/pip/*
+# Stage 1: Install core dependencies
+RUN pip install --no-cache-dir \
+    "typing-extensions==4.11.0" \
+    "PyYAML==6.0.2" \
+    "openai==1.55.0" \
+    "python-dotenv==1.0.1" \
+    "streamlit==1.38.0" \
+    "streamlit-chat==0.1.1"
+
+# Stage 2: Install data processing dependencies
+RUN pip install --no-cache-dir \
+    "pandas==2.1.3" \
+    "numpy>=1.24.0" \
+    "scipy==1.14.1" \
+    "scikit_learn==1.5.2" \
+    "matplotlib==3.9.3" \
+    "plotly==5.24.1" \
+    "bokeh==3.6.2"
+
+# Stage 3: Install remaining dependencies
+RUN pip install --no-cache-dir -r requirements.txt \
+    && rm -rf /root/.cache/pip/*
 
 # Copy project files
 COPY . .

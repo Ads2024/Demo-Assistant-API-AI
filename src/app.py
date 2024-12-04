@@ -7,7 +7,11 @@ import os
 import base64
 from datetime import datetime
 import time
+import re 
 import tempfile
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from PIL import Image
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -30,7 +34,7 @@ def show_welcome_animation():
     """Display welcome animation on first load"""
     with st.spinner("Loading SBA Performance Hub..."):
         time.sleep(1)
-    st.balloons()
+    ##st.balloons()
 
 def display_welcome_banner():
     """Display time-based welcome banner"""
@@ -85,6 +89,106 @@ load_dotenv()
 assistant_id = os.getenv("ASSISTANT_ID")
 vector_store_id = os.getenv("VECTOR_STORE_ID")
 
+def send_email(to_email, content):
+    """Send email with the specified content"""
+    # Email configuration
+    from_email = "abdia980@gmail.com"
+    subject = "SBA Performance Hub - Your Requested Information"
+    
+    # Create message
+    msg = MIMEMultipart()
+    msg['From'] = from_email
+    msg['To'] = to_email
+    msg['Subject'] = subject
+    
+    # Add body
+    msg.attach(MIMEText(content, 'plain'))
+    
+    try:
+        # Create SMTP session
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            password = os.getenv("EMAIL_PASSWORD")
+            if not password:
+                raise ValueError("EMAIL_PASSWORD environment variable is not set")
+            server.login(from_email, password)
+            text = msg.as_string()
+            server.sendmail(from_email, to_email, text)
+            return True
+    except Exception as e:
+        st.error(f"Failed to send email: {str(e)}")
+        return False
+
+def wait_for_run_completion(client, thread_id, run_id, timeout=60):
+    """Wait for the assistant's run to complete"""
+    start_time = time.time()
+    while True:
+        run = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run_id)
+        if run.status == "completed":
+            return True
+        elif run.status == "failed":
+            st.error("Assistant run failed")
+            return False
+        elif time.time() - start_time > timeout:
+            st.error("Request timed out")
+            return False
+        time.sleep(1)
+
+def process_email_query(email, query):
+    """Process email query and send response"""
+    try:
+        thread_id = get_thread_id()
+        if not thread_id:
+            st.sidebar.error("Failed to create thread.")
+            return False
+
+        client = AIAssistantManager.init_client()
+        if not client:
+            st.sidebar.error("Failed to initialize AI client.")
+            return False
+
+        # Create message in thread
+        message = client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=query,
+            timeout=30
+        )
+
+        # Run the assistant
+        run = client.beta.threads.runs.create(
+            thread_id=thread_id,
+            assistant_id=assistant_id
+        )
+
+        # Wait for completion
+        if not wait_for_run_completion(client, thread_id, run.id):
+            return False
+
+        # Get messages after completion
+        messages = client.beta.threads.messages.list(thread_id=thread_id)
+        latest_response = None
+
+        # Get the latest assistant response
+        for msg in messages.data:
+            if msg.role == "assistant":
+                latest_response = msg.content[0].text.value
+                break
+
+        if not latest_response:
+            st.sidebar.error("No response generated")
+            return False
+
+        # Send email
+        if send_email(email, latest_response):
+            return True
+        return False
+
+    except Exception as e:
+        st.sidebar.error(f"Error processing query: {str(e)}")
+        return False
+
+
 def process_query(query, output_area):
     """Process a user query and generate response"""
     thread_id = get_thread_id()
@@ -93,12 +197,18 @@ def process_query(query, output_area):
         return
 
     client = AIAssistantManager.init_client()
+
+    # Log request for verbose mode
+    if st.session_state.verbose_logging:
+        st.sidebar.markdown(f"📝 **User Query:** {query}")
+        start_time = time.time()
     
     # Add message to thread
     client.beta.threads.messages.create(
         thread_id=thread_id,
         role="user",
-        content=query
+        content=query,
+        timeout=30
     )
     
     # Stream response
@@ -108,7 +218,8 @@ def process_query(query, output_area):
             thread_id=thread_id,
             assistant_id=assistant_id,
             instructions="",
-            event_handler=event_handler
+            event_handler=event_handler,
+            timeout=30
         ) as stream:
             current_response = ""
             for delta in stream:
@@ -152,6 +263,13 @@ def process_query(query, output_area):
                         # Handle unknown content types
                         else:
                             st.warning(f"Unexpected content type: {block.type}")
+
+            # Log response time for verbose mode
+            if st.session_state.verbose_logging:
+                end_time = time.time()
+                response_time = round(end_time - start_time, 2)
+                st.sidebar.markdown(f"⏱️ **Response Time:** {response_time} seconds")
+                st.sidebar.markdown(f"**Response:** {content_blocks}")
             
             # Add complete response to conversation history
             if current_response.strip():
@@ -161,6 +279,8 @@ def process_query(query, output_area):
                 })
     except Exception as e:
         st.error(f"An error occurred: {e}")
+        if st.session_state.verbose_logging:
+            st.sidebar.error(f"An error occurred: {e}")
 
      
 
@@ -175,6 +295,50 @@ def render_sidebar():
     """Render sidebar with enhanced features"""
     st.sidebar.image("assets/Snack-Brands.png", use_column_width=True)
     
+    # Email notification section
+    enable_email = st.sidebar.checkbox("📧 Enable Email Notifications", 
+                                     key="enable_email",
+                                     help="Get answers sent to your email")
+    
+    if enable_email:
+        email = st.sidebar.text_input("Enter your email address",
+                                    key="email_address",
+                                    placeholder="your.email@example.com")
+        
+        email_query = st.sidebar.text_area("What information would you like to receive?",
+                                         key="email_query",
+                                         placeholder="E.g., Daily KPI summary, Weekly efficiency report...")
+        
+        if st.sidebar.button("Send to Email"):
+            if not email or not email_query:
+                st.sidebar.error("Please provide both email and query.")
+            else:
+                with st.spinner("Processing your request..."):
+                    if process_email_query(email, email_query):
+                        st.sidebar.success("✅ Email sent successfully!")
+                    else:
+                        st.sidebar.error("❌ Failed to process request")
+    
+    
+
+    #instatiate verbose logging
+    verbose_logging = st.sidebar.checkbox("📝 Verbose Logging", key="verbose_logging", help="Enable verbose logging for debugging")
+
+    # Dev Mode toggle
+    if st.sidebar.checkbox("🛠️ Dev Mode", key="dev_mode", help="Enable developer mode for debugging"):
+                if st.session_state.thread_id:
+                    st.sidebar.markdown(
+                f"""<div style='padding: 10px; background-color: rgba(255,255,255,0.1); 
+                    border-radius: 5px; margin: 10px 0;'>
+                    <small>Session ID: {st.session_state.thread_id[:8]}...</small>
+                </div>""",
+                unsafe_allow_html=True
+            )
+
+                if verbose_logging:
+                    st.sidebar.markdown("<small>Verbose logging enabled.</small>", unsafe_allow_html=True)
+
+                
     # Add refresh button at the top
     if st.sidebar.button("🔄 New Conversation", key="refresh_button",
                         help="Start a new conversation"):
@@ -183,15 +347,6 @@ def render_sidebar():
         st.session_state.welcome_shown = False
         st.rerun()
     
-    # Display session info if available
-    if st.session_state.thread_id:
-        st.sidebar.markdown(
-            f"""<div style='padding: 10px; background-color: rgba(255,255,255,0.1); 
-                border-radius: 5px; margin: 10px 0;'>
-                <small>Session ID: {st.session_state.thread_id[:8]}...</small>
-            </div>""",
-            unsafe_allow_html=True
-        )
     
     # Quick Actions section
     st.sidebar.markdown("<h2 style='color: #2E86C1;'>Quick Actions</h2>", unsafe_allow_html=True)

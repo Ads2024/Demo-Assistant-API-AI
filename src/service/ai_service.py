@@ -39,7 +39,8 @@ class AIAssistantManager:
                 name=name,
                 instructions=instructions,
                 model=model,
-                tools=tools
+                tools=tools,
+                timeout=30
             )
             logging.info(f"Successfully created AI assistant: {name}")
             return assistant.id
@@ -130,7 +131,7 @@ class AIAssistantManager:
         """Create a new thread for conversations."""
         client = AIAssistantManager.init_client()
         try:
-            thread =  client.beta.threads.create()
+            thread =  client.beta.threads.create(timeout=30)
             return thread.id
         except Exception as e:
             logging.error(f"Error creating thread: {e}")
